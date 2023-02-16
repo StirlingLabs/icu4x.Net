@@ -1,0 +1,115 @@
+name: Follow Upstream
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ '**', '!gh-pages', '!coverage' ]
+    types: [ opened, reopened, ready_for_review, synchronize ]
+  schedule:
+    - cron: '0 17 * * 0'
+  workflow_dispatch:
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  check:
+    name: Upstream
+    uses: StirlingLabs/Actions/.github/workflows/nugetCheckRelease.yaml@main
+    with:
+      upstream: 'unicode-org/icu4x'
+      rids: 'linux-x64 osx win-x64'
+      releasePrefix: 'icu@'
+      ignoreReleases: '1.0.0-beta1 0.6.0 0.5.0 0.4.1 0.4.0 0.3.0 0.2.0 0.1.0'
+      nupkgName: 'StirlingLabs.icu4x.runtime.RID'
+
+  binaries:
+    name: Build
+    needs: [ check ]
+    if: needs.check.outputs.continue == 'true'
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        release: [ 'icu@1.1.0' ] # ${{ fromJSON(needs.check.outputs.releasesNeeded) }}
+    runs-on: [ ubuntu-latest ]
+    defaults:
+      run:
+        shell: bash
+    outputs:
+      continue: ${{ steps.download.outputs.continue }} #FIXME
+      manifest: ${{ steps.download.outputs.manifest }} #FIXME
+      matrixRid: ${{ steps.download.outputs.ridArray }} #FIXME
+      readme: ${{ steps.ancillary.outputs.readme }} #FIXME
+      icon: ${{ steps.ancillary.outputs.icon }} #FIXME
+    steps:
+    - name: Cache
+      uses: Swatinem/rust-cache@v2
+    - name: Install Tools
+      run: |
+        if [[ "$rids" == *"osx"* ]] ; then
+          rustup target add x86_64-apple-darwin
+          rustup target add aarch64-apple-darwin
+        fi
+      env:
+        CARGO_NET_GIT_FETCH_WITH_CLI: true
+        rids: ${{ needs.check.outputs.rids }}
+    - name: Build Library
+      id: download
+      env:
+        CARGO_NET_GIT_FETCH_WITH_CLI: true
+        release: ${{ matrix.release }}
+        releasePrefix: ${{ needs.check.outputs.releasePrefix }}
+        releasesUrl: ${{ needs.check.outputs.releasesUrl }}
+        tagsUrl: ${{ needs.check.outputs.tagsUrl }}
+        rids: ${{ needs.check.outputs.rids }}
+        crate: icu_capi_cdylib
+      run: |
+        #
+        # Get info about the release being processed
+        echo "Processing $release"
+        curl -L https://crates.io/api/v1/crates/${crate}/${release#"$releasePrefix"}/download | tar -xzf -
+        folder="${crate}-${release#"$releasePrefix"}"
+        cd "$folder"
+        echo "What's in the crate?"
+        ls -la
+        CARGO_PROFILE_RELEASE_LTO=true
+        CARGO_PROFILE_RELEASE_OPT_LEVEL="3"
+        for rid in $rids ; do
+          if [[ "$rid" == "win"* ]] ; then
+            target="x86_64-pc-windows-gnullvm"
+            cargo build --release --target "$target"
+            ls -la target
+            ls -la target/release
+            ls -la "target/$target"
+            ls -la "target/$target/release"
+          fi
+          if [[ "$rid" == "linux"* ]] ; then
+            target="x86_64-unknown-linux-gnu"
+            cargo build --release --target "$target"
+            ls -la "target/$target/release"
+          fi
+          if [[ "$rid" == "osx"* ]] ; then
+            target="x86_64-apple-darwin"
+            cargo build --release --target "$target"
+            ls -la "target/$target/release"
+            target="aarch64-apple-darwin"
+            cargo build --release --target "$target"
+            ls -la "target/$target/release"
+          fi
+        done
+        echo "Done building"
+
+        #
+        # Outputs
+        echo "continue=${continue}" >> $GITHUB_OUTPUT
+        echo "manifest=${manifest}" >> $GITHUB_OUTPUT
+        echo "crate=${crate}" >> $GITHUB_OUTPUT
+        echo "folder=${folder}" >> $GITHUB_OUTPUT
+    - uses: actions/upload-artifact@v3
+      if: contains(needs.check.outputs.rids, 'linux-x64')
+      with:
+        name: my-artifact
+        path: path/to/artifact/world.txt
