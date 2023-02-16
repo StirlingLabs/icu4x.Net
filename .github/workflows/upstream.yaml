@@ -31,9 +31,9 @@ jobs:
     if: needs.check.outputs.continue == 'true'
     strategy:
       fail-fast: false
-      max-parallel: 1
+      max-parallel: 3
       matrix:
-        os: [ ubuntu-latest, macos-latest ]
+        os: [ ubuntu-latest, macos-latest, windows-latest ]
         release: [ 'icu@1.1.0' ] # ${{ fromJSON(needs.check.outputs.releasesNeeded) }}
     runs-on: ${{ matrix.os }}
     defaults:
@@ -49,6 +49,7 @@ jobs:
     - name: Cache
       uses: Swatinem/rust-cache@v2
     - name: Install  Targets
+      if: false
       run: |
         if [[ "$RUNNER_OS" == "macOS" ]] ; then
           rustup target add x86_64-apple-darwin
@@ -62,7 +63,7 @@ jobs:
       env:
         rids: ${{ needs.check.outputs.rids }}
     - name: Build Library
-      id: download
+      id: build
       env:
         CARGO_NET_GIT_FETCH_WITH_CLI: true
         release: ${{ matrix.release }}
@@ -81,37 +82,31 @@ jobs:
         echo "Folder is $folder"
         CARGO_PROFILE_RELEASE_LTO=true
         CARGO_PROFILE_RELEASE_OPT_LEVEL="3"
-        if [[ "$RUNNER_OS" == "Linux" ]] ; then
-          for rid in $rids ; do
-            if [[ "$rid" == "win"* ]] ; then
-              target="x86_64-pc-windows-gnu"
-              cargo build --release --target "$target"
-              echo "Built $target"
-              ls -la target
-              ls -la target/release
-              ls -la "target/$target"
-              ls -la "target/$target/release"
-            fi
-            if [[ "$rid" == "linux"* ]] ; then
-              target="x86_64-unknown-linux-gnu"
-              cargo build --release --target "$target"
-              ls -la "target/$target/release"
-              echo "Built $target"
-            fi
-          done
-        elif [[ "$RUNNER_OS" == "macOS" ]] ; then
-          for rid in $rids ; do
-            if [[ "$rid" == "osx"* ]] ; then
-              target="x86_64-apple-darwin"
-              cargo build --release --target "$target"
-              echo "Built $target"
-              ls -la "target/$target/release"
-              target="aarch64-apple-darwin"
-              cargo build --release --target "$target"
-              echo "Built $target"
-              ls -la "target/$target/release"
-            fi
-          done
+        if [[ "$RUNNER_OS" == "Windows" ]] && [[ "$rids" == *"win"* ]]; then
+          target="x86_64-pc-windows-msvc"
+          cargo build --release --target "$target"
+          echo "Built $target"
+          winFile="$folder/target/$target/release/$crate.dll"
+          echo "winFile=$winFile" >> $GITHUB_OUTPUT
+        elif [[ "$RUNNER_OS" == "Linux" ]] && [[ "$rids" == *"linux"* ]] ; then
+          target="x86_64-unknown-linux-gnu"
+          cargo build --release --target "$target"
+          echo "Built $target"
+          linFile="$folder/target/$target/release/lib$crate.so"
+          echo "linFile=$linFile" >> $GITHUB_OUTPUT
+        elif [[ "$RUNNER_OS" == "macOS" ]] && [[ "$rids" == *"osx"* ]] ; then
+          x64="x86_64-apple-darwin"
+          aarch64="aarch64-apple-darwin"
+          rustup target add "$x64"
+          rustup target add "$aarch64"
+          cargo build --release --target "$x64" --target "$aarch64"
+          x64="target/$x64/release"
+          aarch64="target/$aarch64/release"
+          target="target/apple-darwin/release"
+          mkdir -p "$target"
+          lipo -create "$x64/libicu_capi_cdylib.dylib" "$aarch64/libicu_capi_cdylib.dylib" -output "$target/libicu_capi_cdylib.dylib"
+          osxFile="$folder/$target/lib$crate.dylib"
+          echo "osxFile=$osxFile" >> $GITHUB_OUTPUT
         fi
         echo "Done building"
 
@@ -122,19 +117,18 @@ jobs:
         echo "crate=${crate}" >> $GITHUB_OUTPUT
         echo "folder=${folder}" >> $GITHUB_OUTPUT
     - uses: actions/upload-artifact@v3
-      if: contains(needs.check.outputs.rids, 'linux-x64')
+      if: runner.os == 'Linux' && contains(needs.check.outputs.rids, 'linux-x64')
       with:
         name: linux-x64
-        path: ${{ steps.build.outputs.folder }}/target/x86_64-unknown-linux-gnu/release/libicu_capi_cdylib.so
+        path: ${{ steps.build.outputs.linFile }}
     - uses: actions/upload-artifact@v3
-      if: contains(needs.check.outputs.rids, 'win-x64')
+      if: runner.os == 'Windows' && contains(needs.check.outputs.rids, 'win-x64')
       with:
         name: win-x64
-        path: ${{ steps.build.outputs.folder }}/target/x86_64-pc-windows-gnu/release/icu_capi_cdylib.dll
+        path: ${{ steps.build.outputs.winFile }}
     - uses: actions/upload-artifact@v3
-      if: contains(needs.check.outputs.rids, 'osx')
+      if: runner.os == 'macOS' && contains(needs.check.outputs.rids, 'osx')
       with:
         name: osx
         path: |
-          ${{ steps.build.outputs.folder }}/target/x86_64-apple-darwin/release/libicu_capi_cdylib.dylib
-          ${{ steps.build.outputs.folder }}/target/aarch64-apple-darwin/release/libicu_capi_cdylib.dylib
+          ${{ steps.build.outputs.osxFile }}
