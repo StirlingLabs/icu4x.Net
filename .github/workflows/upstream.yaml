@@ -33,8 +33,9 @@ jobs:
       fail-fast: false
       max-parallel: 1
       matrix:
+        os: [ ubuntu-latest, macos-latest ]
         release: [ 'icu@1.1.0' ] # ${{ fromJSON(needs.check.outputs.releasesNeeded) }}
-    runs-on: [ ubuntu-latest ]
+    runs-on: ${{ matrix.os }}
     defaults:
       run:
         shell: bash
@@ -47,11 +48,17 @@ jobs:
     steps:
     - name: Cache
       uses: Swatinem/rust-cache@v2
-    - name: Install MacOS Targets
-      if: contains(needs.check.outputs.rids, 'osx')
+    - name: Install  Targets
       run: |
-        rustup target add x86_64-apple-darwin
-        rustup target add aarch64-apple-darwin
+        if [[ "$RUNNER_OS" == "macOS" ]] ; then
+          rustup target add x86_64-apple-darwin
+          rustup toolchain install stable-x86_64-apple-darwin
+          rustup target add aarch64-apple-darwin
+          rustup toolchain install stable-x86_64-apple-darwin
+        elif [[ "$RUNNER_OS" == "Linux" ]] ; then
+          rustup target add x86_64-pc-windows-gnu
+          rustup toolchain install stable-x86_64-pc-windows-gnu
+        fi
       env:
         rids: ${{ needs.check.outputs.rids }}
     - name: Build Library
@@ -71,37 +78,41 @@ jobs:
         curl -L https://crates.io/api/v1/crates/${crate}/${release#"$releasePrefix"}/download | tar -xzf -
         folder="${crate}-${release#"$releasePrefix"}"
         cd "$folder"
-        echo "What's in the crate?"
-        ls -la
+        echo "Folder is $folder"
         CARGO_PROFILE_RELEASE_LTO=true
         CARGO_PROFILE_RELEASE_OPT_LEVEL="3"
-        for rid in $rids ; do
-          if [[ "$rid" == "win"* ]] ; then
-            target="x86_64-pc-windows-gnullvm"
-            cargo build --release --target "$target"
-            echo "Built $target"
-            ls -la target
-            ls -la target/release
-            ls -la "target/$target"
-            ls -la "target/$target/release"
-          fi
-          if [[ "$rid" == "linux"* ]] ; then
-            target="x86_64-unknown-linux-gnu"
-            cargo build --release --target "$target"
-            ls -la "target/$target/release"
-            echo "Built $target"
-          fi
-          if [[ "$rid" == "osx"* ]] ; then
-            target="x86_64-apple-darwin"
-            cargo build --release --target "$target"
-            echo "Built $target"
-            ls -la "target/$target/release"
-            target="aarch64-apple-darwin"
-            cargo build --release --target "$target"
-            echo "Built $target"
-            ls -la "target/$target/release"
-          fi
-        done
+        if [[ "$RUNNER_OS" == "Linux" ]] ; then
+          for rid in $rids ; do
+            if [[ "$rid" == "win"* ]] ; then
+              target="x86_64-pc-windows-gnu"
+              cargo build --release --target "$target"
+              echo "Built $target"
+              ls -la target
+              ls -la target/release
+              ls -la "target/$target"
+              ls -la "target/$target/release"
+            fi
+            if [[ "$rid" == "linux"* ]] ; then
+              target="x86_64-unknown-linux-gnu"
+              cargo build --release --target "$target"
+              ls -la "target/$target/release"
+              echo "Built $target"
+            fi
+          done
+        elif [[ "$RUNNER_OS" == "macOS" ]] ; then
+          for rid in $rids ; do
+            if [[ "$rid" == "osx"* ]] ; then
+              target="x86_64-apple-darwin"
+              cargo build --release --target "$target"
+              echo "Built $target"
+              ls -la "target/$target/release"
+              target="aarch64-apple-darwin"
+              cargo build --release --target "$target"
+              echo "Built $target"
+              ls -la "target/$target/release"
+            fi
+          done
+        fi
         echo "Done building"
 
         #
@@ -119,7 +130,7 @@ jobs:
       if: contains(needs.check.outputs.rids, 'win-x64')
       with:
         name: win-x64
-        path: ${{ steps.build.outputs.folder }}/target/x86_64-pc-windows-gnullvm/release/icu_capi_cdylib.dll
+        path: ${{ steps.build.outputs.folder }}/target/x86_64-pc-windows-gnu/release/icu_capi_cdylib.dll
     - uses: actions/upload-artifact@v3
       if: contains(needs.check.outputs.rids, 'osx')
       with:
