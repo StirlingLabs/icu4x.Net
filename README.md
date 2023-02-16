@@ -1,4 +1,4 @@
-![icu4x.Net](https://github.com/StirlingLabs/icu4x.Net/blob/main/docs/icu4x.jpg)
+![icu4x.Net](https://github.com/StirlingLabs/icu4x.Net/blob/main/icu4x.jpg)
 
 # Cross-platform UTF8
 Cross-platform globally shared text.
