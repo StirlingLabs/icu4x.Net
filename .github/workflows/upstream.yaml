@@ -34,7 +34,7 @@ jobs:
       max-parallel: 3
       matrix:
         os: [ ubuntu-latest, macos-latest, windows-latest ]
-        release: [ 'icu@1.1.0' ] # ${{ fromJSON(needs.check.outputs.releasesNeeded) }}
+        release: ${{ fromJSON(needs.check.outputs.releasesNeeded) }}
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -208,6 +208,7 @@ jobs:
         readme: README.md
         icon: SL.png
         gitUrl: ${{ steps.data.outputs.gitUrl }}
+        authors: Unicode Consortium, Stirling Labs Team
 
     - name: Build NuPkg
       if: steps.data.outputs.continue == 'true'
@@ -221,7 +222,7 @@ jobs:
         ls -la
 
     - name: Push NuPkg
-      if: false && steps.build.outputs.continue == 'true'
+      if: steps.build.outputs.continue == 'true'
       id: push
       env:
         debug: ${{ needs.check.outputs.debug }}
