@@ -84,13 +84,13 @@ jobs:
         CARGO_PROFILE_RELEASE_STRIP="true"
         if [[ "$RUNNER_OS" == "Windows" ]] && [[ "$rids" == *"win"* ]]; then
           target="x86_64-pc-windows-msvc"
-          cargo build --release --target "$target"
+          cargo build --release --target "$target" --features "buffer_provider provider_fs"
           winFile="$folder/target/$target/release/$crate.dll"
           echo "Built $target to $winFile"
           echo "winFile=$winFile" >> $GITHUB_OUTPUT
         elif [[ "$RUNNER_OS" == "Linux" ]] && [[ "$rids" == *"linux"* ]] ; then
           target="x86_64-unknown-linux-gnu"
-          cargo build --release --target "$target"
+          cargo build --release --target "$target" --features "buffer_provider provider_fs"
           linFile="$folder/target/$target/release/lib$crate.so"
           echo "Built $target to $linFile"
           echo "linFile=$linFile" >> $GITHUB_OUTPUT
@@ -99,7 +99,7 @@ jobs:
           aarch64="aarch64-apple-darwin"
           rustup target add "$x64"
           rustup target add "$aarch64"
-          cargo build --release --target "$x64" --target "$aarch64"
+          cargo build --release --target "$x64" --target "$aarch64" --features "buffer_provider provider_fs"
           x64="target/$x64/release"
           aarch64="target/$aarch64/release"
           target="target/apple-darwin/release"
