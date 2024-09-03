@@ -183,7 +183,7 @@ jobs:
     - name: Get Libraries
       if: steps.data.outputs.continue == 'true'
       id: libraries
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4.1.7
       with:
         name: ${{ matrix.version }}-${{ matrix.rid }}
         path: download
